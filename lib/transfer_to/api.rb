@@ -47,37 +47,32 @@ module TransferTo
     # countries with number portability if you are able to know the destination
     # operator.
 
-    def topup(msisdn, destination, product, reserved_id = nil,
-              recipient_sms = nil, sender_sms = nil, operator_id = nil)
-      @params     = { msisdn: msisdn, destination_msisdn: destination, product: product }
-      self.oid    = operator_id
-
-      @params.merge({
-        cid1: "", cid2: "", cid3: "",
-        reserved_id: reserved_id,
-        sender_sms: (sender_sms ? "yes" : "no"),
-        sms: recipient_sms,
-        sender_text: sender_sms,
+    #
+    # params:
+    # msisdn, destination, product, reserve_id, recipient_sms, sender_sms, operator_id
+    def topup(args, key=nil)
+      params = {
         delivered_amount_info: "1",
         return_service_fee: "1",
         return_timestamp: "1",
         return_version: "1"
-      })
+      }.merge(args)
+      params[:operatorid] = args[:operator_id].to_i if args[:operator_id]
 
-      run_action :topup
+      run_action :topup, params, key
     end
 
     # This method is used to retrieve various information of a specific MSISDN
     # (operator, country…) as well as the list of all products configured for
     # your specific account and the destination operator of the MSISDN.
     def msisdn_info(msisdn, operator_id=nil)
-      @params = {
+      params = {
         destination_msisdn: msisdn,
         delivered_amount_info: "1",
         return_service_fee: 1
       }
-      self.oid = operator_id
-      run_action :msisdn_info
+      params[:operatorid] = operator_id.to_i if operator_id
+      run_action :msisdn_info, params
     end
 
     # This method can be used to retrieve available information on a specific
@@ -86,8 +81,8 @@ module TransferTo
     # the same as the values returned in the fields “input_value” and
     # “validated_input_value” of the “topup” method response.
     def trans_info(id)
-      @params = { transactionid: id }
-      run_action :trans_info
+      params = { transactionid: id }
+      run_action :trans_info, params
     end
 
     # This method is used to retrieve the list of transactions performed within
@@ -120,13 +115,15 @@ module TransferTo
     # ---------
     # Defines the end date of the search (included). Format must be YYYY-MM-DD.
 
-    def trans_list(start, stop, msisdn = nil, destination = nil, code = nil)
-      @params[:code]               = code unless code
-      @params[:msisdn]             = msisdn unless msisdn
-      @params[:stop_date]          = to_yyyymmdd(stop)
-      @params[:start_date]         = to_yyyymmdd(start)
-      @params[:destination_msisdn] = destination unless destination
-      run_action :trans_list
+    # args:
+    # start, stop, msisdn, destination, code
+    def trans_list(args)
+      params[:code]               = args[:code] if args[:code]
+      params[:msisdn]             = args[:msisdn] if args[:msisdn]
+      params[:stop_date]          = arsg[:stop].strftime("%Y-%m-%d") if args[:stop]
+      params[:start_date]         = args[:start].strftime("%Y-%m-%d") if args[:start]
+      params[:destination_msisdn] = args[:destination] if args[:destination]
+      run_action :trans_list, params
     end
 
     # This method is used to reserve an ID in the system. This ID can then be
@@ -140,8 +137,8 @@ module TransferTo
     # This method is used to retrieve the ID of a transaction previously
     # performed based on the key used in the request at that time.
     def get_id_from_key(key)
-      @params = { from_key: key }
-      run_action :get_id_from_key
+      params = { from_key: key }
+      run_action :get_id_from_key, params
     end
 
     # This method is used to retrieve coverage and pricelist offered to you.
@@ -160,15 +157,24 @@ module TransferTo
     # iii) operatorid of the requested operator if info_type = “operator”
 
     def pricelist(info_type, content = nil)
-      @params[:info_type] = info_type
-      @params[:content] = content unless content
-      run_action :pricelist
+      params = {}
+      params[:info_type] = info_type
+      params[:content] = content if content
+      run_action :pricelist, params
     end
 
-    private
 
-    def oid=(operator_id)
-      @params[:operatorid] = operator_id.to_i if operator_id.is_a?(Integer)
+    # check the status of the TranferTo API
+    def operational?
+      req = self.ping
+      req.reply.success? && req.reply.message == "pong" && req.reply.authentication_key == req.key
+    end
+
+    # get information about a phone number
+    def phone_search(number, operator_id = nil)
+      req = msisdn_info(number, operator_id)
+      information = req.reply.information
+      information
     end
 
   end

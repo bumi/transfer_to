@@ -1,20 +1,19 @@
 module TransferTo
   class Reply
+    attr_reader :response
 
-    # "reply" as received from Faraday's request
-    def initialize(reply)
-      @response = reply.to_hash[:response]
+    def initialize(response)
+      @response = response
     end
 
-    def format_it
+    def to_h
       {
         data: data,
         status: status,
         success: success?,
-        method: @response.env[:method],
-        url: url,
         headers: headers,
-        raw_response: raw
+        raw_response: raw,
+        authentication_key: authentication_key
       }
     end
 
@@ -23,11 +22,10 @@ module TransferTo
 
     # get the actual data returned by the TransferTo API
     def data
-      hash = {}
-      @response.body.lines.each do |line|
-        key, value = line.strip.split "="
-        hash[key.to_sym] = (key == "error_code") ? value.to_i : value
-      end; hash
+      @data ||= begin
+                  xml = Hash.from_xml(response.body)
+                  xml['TransferTo'].symbolize_keys if xml && xml['TransferTo']
+                end
     end
 
     def status
@@ -35,7 +33,7 @@ module TransferTo
     end
 
     def error_code
-      data[:error_code]
+      data[:error_code].to_i if data[:error_code]
     end
 
     def error_message
@@ -60,7 +58,7 @@ module TransferTo
       information[:info_txt]
     end
 
-    def auth_key
+    def authentication_key
       data[:authentication_key]
     end
 

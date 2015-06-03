@@ -1,24 +1,21 @@
 module TransferTo
   class Base
+    attr_reader :login, :password, :host
 
-    attr_reader :reply, :request
-
-    def initialize(user, password)
-      aurl     = "https://fm.transfer-to.com:5443"
-      @params  = {}
-      @request = ::TransferTo::Request.new user, password, aurl
+    def initialize(login, password, host= "https://fm.transfer-to.com")
+      @login = login
+      @password = password
+      @host = host
     end
 
-    def run_action(name, method = :get)
+    def run_action(action, params = {}, key = nil)
+      request = ::TransferTo::Request.new login, password, host, key
 
-      @request.action = name
-      @request.params = @params
+      request.action = action.to_s
+      request.params = params
 
-      @request.run(method).on_complete do |reply|
-        @reply = ::TransferTo::Reply.new(reply)
-        raise ::TransferTo::Error.new @reply.error_code, @reply.error_message unless @reply.success?
-        return @reply
-      end
+      request.run
+      request
     end
 
     def test_numbers(num = nil)

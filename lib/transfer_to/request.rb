@@ -1,33 +1,32 @@
+require 'active_support/core_ext/hash/conversions'
 module TransferTo
   class Request
 
     attr_reader :user, :name, :params
+    attr_accessor :login, :password, :key, :response, :reply
 
-    def initialize(user, password, aurl = nil)
-      @user   = user
-      @pass   = password
-      @conn = Faraday.new(url: aurl) do |faraday|
+    def initialize(login, password, host, key=nil)
+      @login = login
+      @password = password
+      @key = key
+      @params = {}
+      @conn = Faraday.new(url: host) do |faraday|
         faraday.request  :url_encoded
         faraday.adapter  :net_http
+        faraday.response :logger, TransferTo.logger if TransferTo.logger
       end
-    end
-
-    def reset
-      @params = {}
       authenticate
     end
 
     def authenticate
-      time = Time.now.to_i.to_s
-      add_param :key,   time
-      add_param :md5,   md5_hash(@user + @pass + time.to_s)
-      add_param :login, @user
+      @key ||= Time.now.to_i.to_s
+      add_param :key,   @key
+      add_param :md5,   Digest::MD5.hexdigest("#{self.login}#{self.password}#{self.key.to_s}")
+      add_param :login, self.login
     end
 
-    def action=(name)
-      reset
-      @name = name
-      add_param :action, name
+    def action=(action)
+      add_param :action, action
     end
 
     def params=(parameters)
@@ -42,40 +41,13 @@ module TransferTo
       @params[:key]
     end
 
-    def get?
-      @params[:method] == :get
-    end
-
-    def post?
-      @params[:method] == :post
-    end
-
-    def run(method = :get)
-      add_param :method, method
-      @conn.send(method, "/cgi-bin/shop/topup", @params) do |req|
+    def run
+      self.response = @conn.post("/cgi-bin/shop/topup") do |req|
+        req.body = params.to_xml(dasherize: false)
+        req.headers['Content-Type'] = 'text/xml'
         req.options = { timeout: 600, open_timeout: 600 }
       end
-    end
-
-    private
-
-    def md5_hash(str)
-      (Digest::MD5.new << str).to_s
-    end
-
-    def to_time(time)
-      case time.class.name
-      when "String"  then return Time.parse(time)
-      when "Integer" then return Time.at(time)
-      when "Time"    then return time
-      else raise ArgumentError
-      end
-    rescue
-      Time.now
-    end
-
-    def to_yyyymmdd(time)
-      to_time(time).strftime("%Y-%m-%d")
+      self.reply = ::TransferTo::Reply.new(self.response)
     end
 
   end
